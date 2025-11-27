@@ -1,0 +1,37 @@
+# cloudbuild.yaml
+steps:
+  # Passo 1: Installa le dipendenze di Node.js per il frontend
+  - name: 'gcr.io/cloud-builders/npm'
+    id: 'Installazione dipendenze Frontend'
+    args: ['install']
+
+  # Passo 2: Costruisci l'applicazione frontend
+  # Inietta i secret come variabili d'ambiente (es. VITE_FRONTIER_...) durante la build.
+  - name: 'gcr.io/cloud-builders/npm'
+    id: 'Costruzione Frontend'
+    args: ['run', 'build']
+    env:
+      - 'NODE_ENV=production'
+      # Adatta il prefisso (VITE_, REACT_APP_, ecc.) al tuo framework di frontend
+      - 'VITE_FRONTIER_CLIENT_ID=${_FRONTIER_CLIENT_ID}' 
+      - 'VITE_FRONTIER_SHARED_KEY=${_FRONTIER_SHARED_KEY}' 
+
+  # Passo 3: Installa le dipendenze delle Firebase Functions
+  - name: 'gcr.io/cloud-builders/npm'
+    id: 'Installazione dipendenze Functions'
+    args: ['install']
+    dir: 'functions'
+
+  # Passo 4: Deploy su Firebase Hosting e Functions
+  - name: 'gcr.io/cloud-builders/firebase'
+    id: 'Deploy su Firebase'
+    args: ['deploy', '--project=${PROJECT_ID}', '--only', 'hosting,functions']
+
+# Sezione per definire i secret da usare
+# I secret vengono iniettati come variabili d'ambiente con il prefisso '_' (es. _FRONTIER_CLIENT_ID)
+availableSecrets:
+  secretManager:
+  - versionName: projects/${PROJECT_ID}/secrets/FRONTIER_CLIENT_ID/versions/latest
+    env: '_FRONTIER_CLIENT_ID'
+  - versionName: projects/${PROJECT_ID}/secrets/FRONTIER_SHARED_KEY/versions/latest
+    env: '_FRONTIER_SHARED_KEY'
