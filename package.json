@@ -1,0 +1,30 @@
+{
+  "name": "commander's-hub---awaiting-directives",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "functions:build": "npm --prefix functions run build",
+    "predeploy": "npm run build && npm run functions:build",
+    "deploy": "npm run predeploy && firebase deploy"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "@google/genai": "^1.29.1",
+    "firebase": "^10.12.3",
+    "firebase-functions": "^7.0.0",
+    "firebase-admin": "^13.6.0",
+    "axios": "^1.13.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "firebase-tools": "^13.22.0"
+  }
+}
