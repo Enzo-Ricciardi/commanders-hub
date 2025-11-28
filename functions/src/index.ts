@@ -89,19 +89,13 @@ export const frontierCallback = onRequest({ cors: true, secrets: [frontierClient
     return;
   }
 
+  // TEMPORARILY DISABLED - Debug mode
   // Check if this code was already used
-  if (usedAuthCodes.has(code)) {
-    logger.warn("Auth code already used, ignoring duplicate request");
-    response.status(200).send(`
-      <html>
-        <body style="background-color: #0c111a; color: #e5e7eb; text-align: center; padding: 50px;">
-          <h1>Already Processing</h1>
-          <p>This authentication is already being processed. Please wait...</p>
-        </body>
-      </html>
-    `);
-    return;
-  }
+  // if (usedAuthCodes.has(code)) {
+  //   logger.warn("Auth code already used, ignoring duplicate request");
+  //   response.status(200).send(`...`);
+  //   return;
+  // }
 
   // Mark this code as used
   usedAuthCodes.add(code);
@@ -608,8 +602,31 @@ export const frontierCallback = onRequest({ cors: true, secrets: [frontierClient
     `);
   } catch (error) {
     logger.error("Error during token exchange or profile fetch:", error);
-    // ... error handling ...
-    response.status(500).send("Internal Server Error");
+
+    let errorMessage = "Unknown error occurred";
+    if (axios.isAxiosError(error)) {
+      logger.error("Axios error details:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        url: error.config?.url
+      });
+      errorMessage = error.response?.data?.error_description || error.response?.data?.error || error.message;
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
+    response.status(500).send(`
+      <html>
+        <body style="background-color: #0c111a; color: #e5e7eb; text-align: center; padding: 50px; font-family: sans-serif;">
+          <h1 style="color: #f97316;">Authentication Error</h1>
+          <p>Failed to complete authentication with Frontier.</p>
+          <p style="color: #9ca3af; font-size: 14px; margin-top: 20px;">${errorMessage}</p>
+          <button onclick="window.location.href='/'" style="margin-top: 30px; padding: 12px 24px; background: #f97316; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+            Try Again
+          </button>
+        </body>
+      </html>
+    `);
   }
 });
 

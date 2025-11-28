@@ -97,7 +97,7 @@ const usedAuthCodes = new Set();
 // Step 2: Handle the callback from Frontier
 // Aggiornamento: Aggiungi tutti i secret usati in questa funzione
 exports.frontierCallback = (0, https_1.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret, inaraApiKey] }, async (request, response) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4;
     const code = request.query.code;
     const state = request.query.state;
     firebase_functions_1.logger.info("Callback received", { code: code ? "***" : "missing", state, query: request.query });
@@ -106,19 +106,13 @@ exports.frontierCallback = (0, https_1.onRequest)({ cors: true, secrets: [fronti
         response.status(400).send("Authentication failed: No authorization code provided.");
         return;
     }
+    // TEMPORARILY DISABLED - Debug mode
     // Check if this code was already used
-    if (usedAuthCodes.has(code)) {
-        firebase_functions_1.logger.warn("Auth code already used, ignoring duplicate request");
-        response.status(200).send(`
-      <html>
-        <body style="background-color: #0c111a; color: #e5e7eb; text-align: center; padding: 50px;">
-          <h1>Already Processing</h1>
-          <p>This authentication is already being processed. Please wait...</p>
-        </body>
-      </html>
-    `);
-        return;
-    }
+    // if (usedAuthCodes.has(code)) {
+    //   logger.warn("Auth code already used, ignoring duplicate request");
+    //   response.status(200).send(`...`);
+    //   return;
+    // }
     // Mark this code as used
     usedAuthCodes.add(code);
     // Clean up after 5 minutes
@@ -593,8 +587,30 @@ exports.frontierCallback = (0, https_1.onRequest)({ cors: true, secrets: [fronti
     }
     catch (error) {
         firebase_functions_1.logger.error("Error during token exchange or profile fetch:", error);
-        // ... error handling ...
-        response.status(500).send("Internal Server Error");
+        let errorMessage = "Unknown error occurred";
+        if (axios_1.default.isAxiosError(error)) {
+            firebase_functions_1.logger.error("Axios error details:", {
+                status: (_y = error.response) === null || _y === void 0 ? void 0 : _y.status,
+                data: (_z = error.response) === null || _z === void 0 ? void 0 : _z.data,
+                url: (_0 = error.config) === null || _0 === void 0 ? void 0 : _0.url
+            });
+            errorMessage = ((_2 = (_1 = error.response) === null || _1 === void 0 ? void 0 : _1.data) === null || _2 === void 0 ? void 0 : _2.error_description) || ((_4 = (_3 = error.response) === null || _3 === void 0 ? void 0 : _3.data) === null || _4 === void 0 ? void 0 : _4.error) || error.message;
+        }
+        else if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        response.status(500).send(`
+      <html>
+        <body style="background-color: #0c111a; color: #e5e7eb; text-align: center; padding: 50px; font-family: sans-serif;">
+          <h1 style="color: #f97316;">Authentication Error</h1>
+          <p>Failed to complete authentication with Frontier.</p>
+          <p style="color: #9ca3af; font-size: 14px; margin-top: 20px;">${errorMessage}</p>
+          <button onclick="window.location.href='/'" style="margin-top: 30px; padding: 12px 24px; background: #f97316; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+            Try Again
+          </button>
+        </body>
+      </html>
+    `);
     }
 });
 // New function to retrieve data by session ID
