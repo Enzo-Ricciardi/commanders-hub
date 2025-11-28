@@ -92,6 +92,8 @@ exports.frontierAuth = (0, https_1.onRequest)({ cors: true, secrets: [frontierCl
     firebase_functions_1.logger.info(`Redirecting user to Frontier for authentication. URI: ${REDIRECT_URI}`);
     response.redirect(authUrl);
 });
+// In-memory cache to prevent double-use of auth codes
+const usedAuthCodes = new Set();
 // Step 2: Handle the callback from Frontier
 // Aggiornamento: Aggiungi tutti i secret usati in questa funzione
 exports.frontierCallback = (0, https_1.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret, inaraApiKey] }, async (request, response) => {
@@ -104,6 +106,23 @@ exports.frontierCallback = (0, https_1.onRequest)({ cors: true, secrets: [fronti
         response.status(400).send("Authentication failed: No authorization code provided.");
         return;
     }
+    // Check if this code was already used
+    if (usedAuthCodes.has(code)) {
+        firebase_functions_1.logger.warn("Auth code already used, ignoring duplicate request");
+        response.status(200).send(`
+      <html>
+        <body style="background-color: #0c111a; color: #e5e7eb; text-align: center; padding: 50px;">
+          <h1>Already Processing</h1>
+          <p>This authentication is already being processed. Please wait...</p>
+        </body>
+      </html>
+    `);
+        return;
+    }
+    // Mark this code as used
+    usedAuthCodes.add(code);
+    // Clean up after 5 minutes
+    setTimeout(() => usedAuthCodes.delete(code), 5 * 60 * 1000);
     firebase_functions_1.logger.info("Received authorization code from Frontier. Exchanging for token...");
     try {
         const clientId = getFrontierClientId();

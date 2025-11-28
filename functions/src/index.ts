@@ -72,6 +72,9 @@ export const frontierAuth = onRequest({ cors: true, secrets: [frontierClientId, 
 });
 
 
+// In-memory cache to prevent double-use of auth codes
+const usedAuthCodes = new Set<string>();
+
 // Step 2: Handle the callback from Frontier
 // Aggiornamento: Aggiungi tutti i secret usati in questa funzione
 export const frontierCallback = onRequest({ cors: true, secrets: [frontierClientId, frontierClientSecret, inaraApiKey] }, async (request, response) => {
@@ -85,6 +88,25 @@ export const frontierCallback = onRequest({ cors: true, secrets: [frontierClient
     response.status(400).send("Authentication failed: No authorization code provided.");
     return;
   }
+
+  // Check if this code was already used
+  if (usedAuthCodes.has(code)) {
+    logger.warn("Auth code already used, ignoring duplicate request");
+    response.status(200).send(`
+      <html>
+        <body style="background-color: #0c111a; color: #e5e7eb; text-align: center; padding: 50px;">
+          <h1>Already Processing</h1>
+          <p>This authentication is already being processed. Please wait...</p>
+        </body>
+      </html>
+    `);
+    return;
+  }
+
+  // Mark this code as used
+  usedAuthCodes.add(code);
+  // Clean up after 5 minutes
+  setTimeout(() => usedAuthCodes.delete(code), 5 * 60 * 1000);
 
   logger.info("Received authorization code from Frontier. Exchanging for token...");
 
