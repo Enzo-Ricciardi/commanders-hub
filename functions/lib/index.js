@@ -41,48 +41,49 @@ const https_1 = require("firebase-functions/v2/https");
 const https_2 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const firebase_functions_1 = require("firebase-functions");
+// Modifica: usiamo defineSecret per tutte le credenziali sensibili
 const params_1 = require("firebase-functions/params");
 const axios_1 = __importDefault(require("axios"));
 const mockData_1 = require("./mockData");
 admin.initializeApp();
-// Define configuration parameters
-const frontierClientId = (0, params_1.defineString)("FRONTIER_CLIENT_ID");
-const frontierClientSecret = (0, params_1.defineString)("FRONTIER_CLIENT_SECRET");
+// =======================================================================================
+// INIZIO MODIFICHE CRUCIALI PER LA SICUREZZA
+// =======================================================================================
+// Definisci i parametri per leggere i valori da Secret Manager
+// Il nome del secret deve corrispondere esattamente a quello creato in Secret Manager.
+const frontierClientId = (0, params_1.defineSecret)("FRONTIER_CLIENT_ID");
+const frontierClientSecret = (0, params_1.defineSecret)("FRONTIER_SHARED_KEY"); // Usiamo il nome del secret creato
 const inaraApiKey = (0, params_1.defineSecret)("INARA_API_KEY");
-const FALLBACK_FRONTIER_CLIENT_ID = "db54bf88-2a8a-4d63-bfcc-638b44cdd982";
-const FALLBACK_FRONTIER_CLIENT_SECRET = "66596cdb-a027-414a-acc4-9c5c39c13c1e";
+// Rimuoviamo completamente le costanti FALLBACK hardcoded.
+// const FALLBACK_FRONTIER_CLIENT_ID = "db54bf88-2a8a-4d63-bfcc-638b44cdd982"; // RIGA ELIMINATA
+// const FALLBACK_FRONTIER_CLIENT_SECRET = "66596cdb-a027-414a-acc4-9c5c39c13c1e"; // RIGA ELIMINATA
+// Funzione helper per accedere al secret (semplificata)
 const getFrontierClientId = () => {
-    return (frontierClientId.value() ||
-        process.env.FRONTIER_CLIENT_ID ||
-        FALLBACK_FRONTIER_CLIENT_ID);
+    // Legge il valore iniettato da defineSecret.value()
+    return frontierClientId.value();
 };
 const getFrontierClientSecret = () => {
-    return (frontierClientSecret.value() ||
-        process.env.FRONTIER_CLIENT_SECRET ||
-        FALLBACK_FRONTIER_CLIENT_SECRET);
+    // Legge il valore iniettato da defineSecret.value()
+    return frontierClientSecret.value();
 };
+// =======================================================================================
+// FINE MODIFICHE CRUCIALI PER LA SICUREZZA
+// =======================================================================================
 // --- AUTHENTICATION FLOW ---
-// =======================================================================================
-// ACTION REQUIRED: UPDATE THESE VALUES AFTER YOUR FIRST DEPLOYMENT
-// =======================================================================================
-// Find your function region in the deployment output (e.g., "us-central1").
-// const FUNCTION_REGION = "us-central1"; // Non più necessario, l'URL di redirect usa il dominio di hosting
-// Find your project ID in the Cloud Shell prompt or Firebase console (e.g., "commanders-hub-12345").
+// Riscrivi la variabile PROJECT_ID per usare una costante, non per una riscrittura dinamica
+// Questa costante non deve essere modificata se il progetto è fisso.
 const PROJECT_ID = "gen-lang-client-0452273955";
-// =======================================================================================
 // This is the URL that Frontier will redirect to after the user logs in.
-// It is constructed from the values above.
-// It must EXACTLY match the Redirect URI you set in the Frontier Developers Portal.
 const REDIRECT_URI = `https://${PROJECT_ID}.web.app/frontiercallback`;
 // Step 1: Redirect user to Frontier's login page
-exports.frontierAuth = (0, https_2.onRequest)({ cors: true }, (request, response) => {
+exports.frontierAuth = (0, https_2.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret] }, (request, response) => {
     const clientId = getFrontierClientId();
     if (!clientId) {
-        firebase_functions_1.logger.error("Frontier Client ID is not configured.");
+        firebase_functions_1.logger.error("Frontier Client ID is not configured (Secret not loaded).");
         response.status(500).send("Application is not configured correctly. Please contact support.");
         return;
     }
-    const state = "random_string_for_security"; // In a real app, generate and validate this
+    const state = "random_string_for_security";
     const authUrl = "https://auth.frontierstore.net/auth?" +
         `response_type=code&` +
         `client_id=${clientId}&` +
@@ -93,7 +94,8 @@ exports.frontierAuth = (0, https_2.onRequest)({ cors: true }, (request, response
     response.redirect(authUrl);
 });
 // Step 2: Handle the callback from Frontier
-exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraApiKey] }, async (request, response) => {
+// Aggiornamento: Aggiungi tutti i secret usati in questa funzione
+exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret, inaraApiKey] }, async (request, response) => {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
     const code = request.query.code;
     const state = request.query.state;
@@ -106,16 +108,16 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
     firebase_functions_1.logger.info("Received authorization code from Frontier. Exchanging for token...");
     try {
         const clientId = getFrontierClientId();
-        const clientSecret = getFrontierClientSecret();
+        const clientSecret = getFrontierClientSecret(); // Ora legge dal secret
         if (!clientId || !clientSecret) {
-            firebase_functions_1.logger.error("Frontier credentials are not configured in Firebase.");
+            firebase_functions_1.logger.error("Frontier credentials are not configured (Secrets are empty).");
             throw new Error("Server configuration error.");
         }
-        // Manually construct the body string to ensure exact control over encoding
+        // Manually construct the body string
         const bodyParams = [
             `grant_type=authorization_code`,
             `code=${code}`,
-            `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, // Explicitly encode for OAuth 2.0 compliance
+            `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
             `client_id=${clientId}`,
             `client_secret=${clientSecret}`
         ].join('&');
@@ -141,7 +143,7 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
         firebase_functions_1.logger.info("Successfully fetched profile data:", profileResponse.data);
         // Map profile to GameData
         const profile = profileResponse.data;
-        const gameData = (0, mockData_1.getMockGameData)(); // Use as fallback for missing data
+        const gameData = (0, mockData_1.getMockGameData)();
         // Map Commander data
         if (profile.commander) {
             gameData.commander.name = profile.commander.name || gameData.commander.name;
@@ -253,7 +255,7 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
                                         name: `${body.name} - ${ring.name}`,
                                         type: ring.type,
                                         location: body.name,
-                                        rarity: 'Standard' // EDSM doesn't provide rarity, defaulting to Standard
+                                        rarity: 'Standard'
                                     });
                                 });
                             }
@@ -303,9 +305,6 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
             gameData.ship.rebuyCost = ((_t = profile.ship.value) === null || _t === void 0 ? void 0 : _t.hull) || gameData.ship.rebuyCost;
         }
         // Map stored ships
-        // Note: In CAPI, ships might be an object with IDs as keys or an array.
-        // We handle both cases if possible, but usually it's an object { "id": { ... } } or array.
-        // Assuming array based on previous code, but let's be safer.
         let shipsArray = [];
         if (profile.ships) {
             if (Array.isArray(profile.ships)) {
@@ -320,14 +319,13 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
                 var _a, _b, _c;
                 return ({
                     id: ship.id || index,
-                    type: ship.name || 'Unknown', // In CAPI, 'name' is often the model (e.g. "CobraMkIII")
-                    name: ship.shipName, // 'shipName' is the user-given name
+                    type: ship.name || 'Unknown',
+                    name: ship.shipName,
                     location: ((_a = ship.starsystem) === null || _a === void 0 ? void 0 : _a.name) || ((_b = ship.station) === null || _b === void 0 ? void 0 : _b.name) || 'Unknown',
                     value: ((_c = ship.value) === null || _c === void 0 ? void 0 : _c.hull) || 0
                 });
             });
         }
-        // Fetch Thargoid War Data (DCOH)
         // Fetch additional data from Inara API for more accurate information
         try {
             const inaraResponse = await axios_1.default.post('https://inara.cz/inapi/v1/', {
@@ -335,7 +333,7 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
                     appName: "Commander's Hub",
                     appVersion: "1.0",
                     isDeveloped: true,
-                    APIkey: inaraApiKey.value()
+                    APIkey: inaraApiKey.value() // Legge l'Inara API Key in modo sicuro
                 },
                 events: [
                     {
@@ -384,7 +382,7 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
                             callsign: carrier.shipIdent || 'XXX-XXX',
                             location: carrier.starsystemName || 'Unknown',
                             fuel: {
-                                tritium: 0, // Inara doesn't provide fuel data
+                                tritium: 0,
                                 capacity: 25000
                             },
                             balance: 0,
@@ -397,7 +395,7 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
         catch (inaraError) {
             firebase_functions_1.logger.warn("Failed to fetch Inara data, using Frontier data only", inaraError);
         }
-        // Fetch Thargoid War Data with distance calculation
+        // Fetch Thargoid War Data with distance calculation (no change needed here)
         try {
             // First, get current system coordinates from EDSM
             let currentCoords = { x: 0, y: 0, z: 0 };
@@ -578,7 +576,6 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [inaraA
     }
 });
 // --- MOCK DATA FLOW ---
-// This function remains to allow UI testing without full authentication.
 exports.getGameData = (0, https_1.onCall)((request) => {
     firebase_functions_1.logger.info("getGameData function was called for MOCK data", { auth: request.auth });
     const gameData = (0, mockData_1.getMockGameData)();
