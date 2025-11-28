@@ -21,13 +21,52 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for existing session
-    const savedData = storage.getItem('commander_data');
+    // Check for existing session in multiple locations
+    let savedData: string | null = null;
+
+    // 1. Try localStorage first (preferred)
+    savedData = storage.getItem('commander_data');
+
+    // 2. If not found, try sessionStorage (fallback for tracking prevention)
+    if (!savedData) {
+      try {
+        savedData = sessionStorage.getItem('commander_data');
+        if (savedData) {
+          console.log('Recovered data from sessionStorage');
+          // Copy to our storage service for persistence
+          storage.setItem('commander_data', savedData);
+        }
+      } catch (e) {
+        console.warn('sessionStorage not available', e);
+      }
+    }
+
+    // 3. If still not found, check URL params (last resort)
+    if (!savedData) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const dataParam = urlParams.get('data');
+      if (dataParam) {
+        try {
+          savedData = decodeURIComponent(dataParam);
+          console.log('Recovered data from URL params');
+          // Save to storage and clean URL
+          storage.setItem('commander_data', savedData);
+          window.history.replaceState({}, document.title, '/');
+        } catch (e) {
+          console.error('Failed to parse URL data', e);
+        }
+      }
+    }
+
+    // If we found data anywhere, use it
     if (savedData) {
       try {
-        setGameData(JSON.parse(savedData));
+        const parsedData = JSON.parse(savedData);
+        setGameData(parsedData);
         setIsAuthenticated(true);
+        console.log('Commander data loaded successfully');
       } catch (e) {
+        console.error('Failed to parse commander data', e);
         storage.removeItem('commander_data');
       }
     }
