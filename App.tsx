@@ -12,6 +12,7 @@ import { fetchGameData } from './services/mockApiService';
 import { FullscreenProvider } from './context/FullscreenContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { loginAndFetchData } from './services/apiService';
+import { storage } from './services/storageService';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -21,13 +22,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     // Check for existing session
-    const savedData = localStorage.getItem('commander_data');
+    const savedData = storage.getItem('commander_data');
     if (savedData) {
       try {
         setGameData(JSON.parse(savedData));
         setIsAuthenticated(true);
       } catch (e) {
-        localStorage.removeItem('commander_data');
+        storage.removeItem('commander_data');
       }
     }
   }, []);
@@ -49,7 +50,7 @@ const App: React.FC = () => {
         const data = await fetchGameData();
         setGameData(data);
         setIsAuthenticated(true);
-        localStorage.setItem('commander_data', JSON.stringify(data));
+        storage.setItem('commander_data', JSON.stringify(data));
       }
     } catch (err) {
       setError('Failed to login. Please try again.');
@@ -60,7 +61,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('commander_data');
+    storage.removeItem('commander_data');
     setIsAuthenticated(false);
     setGameData(null);
   };

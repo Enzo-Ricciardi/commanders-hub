@@ -544,16 +544,47 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [fronti
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
           </style>
           <script>
-            try {
-              const data = ${JSON.stringify(gameData)};
-              localStorage.setItem('commander_data', JSON.stringify(data));
-              setTimeout(() => {
-                window.location.href = '/';
-              }, 1500);
-            } catch (e) {
-              console.error(e);
-              document.body.innerHTML = '<h1>Error</h1><p>Failed to save game data.</p>';
-            }
+            (function() {
+              try {
+                const data = ${JSON.stringify(gameData)};
+                
+                // Try to save to localStorage
+                try {
+                  localStorage.setItem('commander_data', JSON.stringify(data));
+                  console.log('Commander data saved successfully');
+                } catch (storageError) {
+                  console.warn('localStorage blocked, using sessionStorage fallback', storageError);
+                  try {
+                    sessionStorage.setItem('commander_data', JSON.stringify(data));
+                  } catch (sessionError) {
+                    console.error('Both localStorage and sessionStorage blocked', sessionError);
+                    // Store in memory via URL params as last resort
+                    const encodedData = encodeURIComponent(JSON.stringify(data));
+                    window.location.href = '/?data=' + encodedData;
+                    return;
+                  }
+                }
+                
+                // Redirect to dashboard
+                setTimeout(() => {
+                  window.location.href = '/';
+                }, 1500);
+              } catch (e) {
+                console.error('Critical error:', e);
+                document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: sans-serif; background-color: #0c111a; color: #e5e7eb; height: 100vh;">' +
+                  '<h1 style="color: #f97316;">Storage Error</h1>' +
+                  '<p>Your browser\\'s tracking prevention is blocking data storage.</p>' +
+                  '<p>Please disable tracking prevention for this site or use a different browser.</p>' +
+                  '<p style="margin-top: 30px; font-size: 14px; color: #9ca3af;">' +
+                    'Safari users: Settings → Privacy → Disable "Prevent Cross-Site Tracking"<br>' +
+                    'Firefox users: Settings → Privacy → Standard protection' +
+                  '</p>' +
+                  '<button onclick="window.location.href=\\'/\\'" style="margin-top: 30px; padding: 12px 24px; background: #f97316; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">' +
+                    'Try Again' +
+                  '</button>' +
+                '</div>';
+              }
+            })();
           </script>
         </body>
       </html>
