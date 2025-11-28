@@ -541,48 +541,45 @@ export const frontierCallback = onRequest({ cors: true, secrets: [frontierClient
       credits: gameData.commander.credits
     });
 
-    // Respond to the user's browser with a script to save data and redirect
+    // SAVE TO FIRESTORE (Server-side, before sending response)
+    const sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+    try {
+      await admin.firestore().collection('auth_sessions').doc(sessionId).set({
+        data: gameData,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      logger.info('Data saved to Firestore with session ID:', sessionId);
+    } catch (dbError) {
+      logger.error('Failed to save to Firestore:', dbError);
+      response.status(500).send(`
+        <html>
+          <body style="background-color: #0c111a; color: #e5e7eb; text-align: center; padding: 50px;">
+            <h1>Database Error</h1>
+            <p>Failed to save session data. Please try again.</p>
+          </body>
+        </html>
+      `);
+      return;
+    }
+
+    // Respond to the user's browser with a simple redirect
     response.status(200).send(`
       <html>
         <body style="background-color: #0c111a; color: #e5e7eb; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif;">
           <div style="text-align: center;">
             <h1 style="margin-bottom: 20px;">Authentication Successful</h1>
-            <p>Loading Commander data...</p>
+            <p>Redirecting to dashboard...</p>
             <div style="margin-top: 20px; width: 40px; height: 40px; border: 4px solid #f97316; border-top: 4px solid transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-left: auto; margin-right: auto;"></div>
           </div>
           <style>
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
           </style>
           <script>
-            (function() {
-              try {
-                const data = ${JSON.stringify(gameData)};
-                
-                // STORE DATA IN FIRESTORE (Bypass URL limits and storage blocks)
-                try {
-                  const sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-                  await admin.firestore().collection('auth_sessions').doc(sessionId).set({
-                    data: data,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp()
-                  });
-                  
-                  console.log('Data saved to Firestore with ID:', sessionId);
-                  
-                  // Redirect with session ID
-                  setTimeout(() => {
-                    window.location.href = '/?session_id=' + sessionId;
-                  }, 500);
-                  
-                } catch (dbError) {
-                  console.error('Firestore save failed:', dbError);
-                  throw new Error('Database error: ' + dbError);
-                }
-
-              } catch (e) {
-                console.error('Critical error:', e);
-                document.body.innerHTML = '<div style="color:white; text-align:center; padding:50px;"><h1>Login Error</h1><p>Failed to save session data. Please try again.</p><p>' + e.toString() + '</p></div>';
-              }
-            })();
+            setTimeout(() => {
+              window.location.href = '/?session_id=${sessionId}';
+            }, 500);
           </script>
         </body>
       </html>
