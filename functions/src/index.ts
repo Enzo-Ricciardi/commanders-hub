@@ -28,12 +28,12 @@ const inaraApiKey = defineSecret("INARA_API_KEY");
 // Funzione helper per accedere al secret (semplificata)
 const getFrontierClientId = (): string => {
   // Legge il valore iniettato da defineSecret.value()
-  return frontierClientId.value();
+  return frontierClientId.value().trim();
 };
 
 const getFrontierClientSecret = (): string => {
   // Legge il valore iniettato da defineSecret.value()
-  return frontierClientSecret.value();
+  return frontierClientSecret.value().trim();
 };
 
 // =======================================================================================
