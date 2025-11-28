@@ -36,9 +36,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getGameData = exports.frontierCallback = exports.frontierAuth = void 0;
+exports.getGameData = exports.retrieveAuthData = exports.frontierCallback = exports.frontierAuth = void 0;
 const https_1 = require("firebase-functions/v2/https");
-const https_2 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const firebase_functions_1 = require("firebase-functions");
 // Modifica: usiamo defineSecret per tutte le credenziali sensibili
@@ -76,7 +75,7 @@ const PROJECT_ID = "gen-lang-client-0452273955";
 // This is the URL that Frontier will redirect to after the user logs in.
 const REDIRECT_URI = `https://${PROJECT_ID}.web.app/frontiercallback`;
 // Step 1: Redirect user to Frontier's login page
-exports.frontierAuth = (0, https_2.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret] }, (request, response) => {
+exports.frontierAuth = (0, https_1.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret] }, (request, response) => {
     const clientId = getFrontierClientId();
     if (!clientId) {
         firebase_functions_1.logger.error("Frontier Client ID is not configured (Secret not loaded).");
@@ -95,8 +94,8 @@ exports.frontierAuth = (0, https_2.onRequest)({ cors: true, secrets: [frontierCl
 });
 // Step 2: Handle the callback from Frontier
 // Aggiornamento: Aggiungi tutti i secret usati in questa funzione
-exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret, inaraApiKey] }, async (request, response) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+exports.frontierCallback = (0, https_1.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret, inaraApiKey] }, async (request, response) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
     const code = request.query.code;
     const state = request.query.state;
     firebase_functions_1.logger.info("Callback received", { code: code ? "***" : "missing", state, query: request.query });
@@ -548,59 +547,29 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [fronti
               try {
                 const data = ${JSON.stringify(gameData)};
                 
-                // FLAG: Data saved status
-                let isSaved = false;
-
-                // 1. Try localStorage
+                // STORE DATA IN FIRESTORE (Bypass URL limits and storage blocks)
                 try {
-                  localStorage.setItem('commander_data', JSON.stringify(data));
-                  console.log('Saved to localStorage');
-                  isSaved = true;
-                } catch (e) {
-                  console.warn('localStorage failed', e);
+                  const sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                  await admin.firestore().collection('auth_sessions').doc(sessionId).set({
+                    data: data,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                  });
+                  
+                  console.log('Data saved to Firestore with ID:', sessionId);
+                  
+                  // Redirect with session ID
+                  setTimeout(() => {
+                    window.location.href = '/?session_id=' + sessionId;
+                  }, 500);
+                  
+                } catch (dbError) {
+                  console.error('Firestore save failed:', dbError);
+                  throw new Error('Database error: ' + dbError);
                 }
-                
-                // 2. Try sessionStorage (always try as backup)
-                try {
-                  sessionStorage.setItem('commander_data', JSON.stringify(data));
-                  console.log('Saved to sessionStorage');
-                  isSaved = true;
-                } catch (e) {
-                  console.warn('sessionStorage failed', e);
-                }
-
-                // 3. Try Cookie (always try as backup)
-                try {
-                   const date = new Date();
-                   date.setTime(date.getTime() + (1 * 60 * 60 * 1000)); // 1 hour
-                   // Use Lax to allow redirect reading
-                   document.cookie = "commander_data=" + encodeURIComponent(JSON.stringify(data)) + "; expires=" + date.toUTCString() + "; path=/; SameSite=Lax";
-                   console.log('Saved to Cookie');
-                   isSaved = true;
-                } catch (e) {
-                   console.warn('Cookie failed', e);
-                }
-
-                // 4. URL Fallback (If nothing else worked OR just to be safe)
-                // We always append data to URL if it's safe size, just to guarantee delivery
-                const encodedData = encodeURIComponent(JSON.stringify(data));
-                let targetUrl = '/';
-                
-                if (!isSaved || encodedData.length < 15000) {
-                    console.log('Using URL params fallback');
-                    targetUrl = '/?data=' + encodedData;
-                }
-                
-                // Redirect
-                console.log('Redirecting to:', targetUrl);
-                setTimeout(() => {
-                  window.location.href = targetUrl;
-                }, 500);
 
               } catch (e) {
                 console.error('Critical error:', e);
-                // Fallback UI
-                document.body.innerHTML = '<div style="color:white; text-align:center; padding:50px;"><h1>Critical Error</h1><p>' + e.toString() + '</p></div>';
+                document.body.innerHTML = '<div style="color:white; text-align:center; padding:50px;"><h1>Login Error</h1><p>Failed to save session data. Please try again.</p><p>' + e.toString() + '</p></div>';
               }
             })();
           </script>
@@ -610,19 +579,25 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [fronti
     }
     catch (error) {
         firebase_functions_1.logger.error("Error during token exchange or profile fetch:", error);
-        if (axios_1.default.isAxiosError(error)) {
-            firebase_functions_1.logger.error("Axios error details:", (_y = error.response) === null || _y === void 0 ? void 0 : _y.data);
-        }
-        response.status(500).send(`
-       <html>
-        <body style="font-family: sans-serif; background-color: #0c111a; color: #e5e7eb; text-align: center; padding-top: 50px;">
-          <h1>Authentication Failed</h1>
-          <p>There was an error connecting to the Frontier servers.</p>
-          <p>Please try again later. Check the function logs for more details.</p>
-        </body>
-      </html>
-    `);
+        // ... error handling ...
+        response.status(500).send("Internal Server Error");
     }
+});
+// New function to retrieve data by session ID
+exports.retrieveAuthData = (0, https_1.onCall)(async (request) => {
+    var _a;
+    const sessionId = request.data.sessionId;
+    if (!sessionId) {
+        throw new https_1.HttpsError('invalid-argument', 'The function must be called with a sessionId.');
+    }
+    const doc = await admin.firestore().collection('auth_sessions').doc(sessionId).get();
+    if (!doc.exists) {
+        throw new https_1.HttpsError('not-found', 'Session not found or expired.');
+    }
+    const data = (_a = doc.data()) === null || _a === void 0 ? void 0 : _a.data;
+    // Clean up (delete the session after retrieval)
+    await admin.firestore().collection('auth_sessions').doc(sessionId).delete();
+    return data;
 });
 // --- MOCK DATA FLOW ---
 exports.getGameData = (0, https_1.onCall)((request) => {

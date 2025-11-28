@@ -41,45 +41,45 @@ const App: React.FC = () => {
       }
     }
 
-    // 3. If still not found, check Cookies (fallback for tracking prevention)
-    if (!savedData) {
-      try {
-        const name = "commander_data=";
-        const decodedCookie = decodeURIComponent(document.cookie);
-        const ca = decodedCookie.split(';');
-        for (let i = 0; i < ca.length; i++) {
-          let c = ca[i];
-          while (c.charAt(0) === ' ') {
-            c = c.substring(1);
-          }
-          if (c.indexOf(name) === 0) {
-            savedData = c.substring(name.length, c.length);
-            console.log('Recovered data from Cookie');
-            // Save to storage for better persistence
-            storage.setItem('commander_data', savedData);
-            // Clear cookie to avoid stale data
-            document.cookie = "commander_data=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to read cookie', e);
-      }
-    }
-
-    // 4. If still not found, check URL params (last resort)
+    // 4. If still not found, check URL params for session_id (Firestore handover)
     if (!savedData) {
       const urlParams = new URLSearchParams(window.location.search);
-      const dataParam = urlParams.get('data');
-      if (dataParam) {
-        try {
-          savedData = decodeURIComponent(dataParam);
-          console.log('Recovered data from URL params');
-          // Save to storage and clean URL
-          storage.setItem('commander_data', savedData);
-          window.history.replaceState({}, document.title, '/');
-        } catch (e) {
-          console.error('Failed to parse URL data', e);
-        }
+      const sessionId = urlParams.get('session_id');
+      if (sessionId) {
+        console.log('Found session_id, retrieving from Firestore...');
+        setLoading(true);
+
+        // Import Firebase functions
+        import('firebase/functions').then(async ({ getFunctions, httpsCallable }) => {
+          try {
+            const functions = getFunctions();
+            const retrieveAuthData = httpsCallable(functions, 'retrieveAuthData');
+            const result = await retrieveAuthData({ sessionId });
+
+            if (result.data) {
+              savedData = JSON.stringify(result.data);
+              console.log('Retrieved data from Firestore');
+              // Save to storage for persistence
+              storage.setItem('commander_data', savedData);
+              // Clean URL
+              window.history.replaceState({}, document.title, '/');
+
+              // Parse and set data
+              const parsedData = JSON.parse(savedData);
+              setGameData(parsedData);
+              setIsAuthenticated(true);
+              setLoading(false);
+            }
+          } catch (e) {
+            console.error('Failed to retrieve session data', e);
+            setError('Failed to load session. Please try logging in again.');
+            setLoading(false);
+            // Clean URL
+            window.history.replaceState({}, document.title, '/');
+          }
+        });
+
+        return; // Exit early, async operation in progress
       }
     }
 

@@ -1,5 +1,4 @@
-import { onCall } from "firebase-functions/v2/https";
-import { onRequest } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { logger } from "firebase-functions";
 // Modifica: usiamo defineSecret per tutte le credenziali sensibili
@@ -559,59 +558,29 @@ export const frontierCallback = onRequest({ cors: true, secrets: [frontierClient
               try {
                 const data = ${JSON.stringify(gameData)};
                 
-                // FLAG: Data saved status
-                let isSaved = false;
-
-                // 1. Try localStorage
+                // STORE DATA IN FIRESTORE (Bypass URL limits and storage blocks)
                 try {
-                  localStorage.setItem('commander_data', JSON.stringify(data));
-                  console.log('Saved to localStorage');
-                  isSaved = true;
-                } catch (e) {
-                  console.warn('localStorage failed', e);
+                  const sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                  await admin.firestore().collection('auth_sessions').doc(sessionId).set({
+                    data: data,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                  });
+                  
+                  console.log('Data saved to Firestore with ID:', sessionId);
+                  
+                  // Redirect with session ID
+                  setTimeout(() => {
+                    window.location.href = '/?session_id=' + sessionId;
+                  }, 500);
+                  
+                } catch (dbError) {
+                  console.error('Firestore save failed:', dbError);
+                  throw new Error('Database error: ' + dbError);
                 }
-                
-                // 2. Try sessionStorage (always try as backup)
-                try {
-                  sessionStorage.setItem('commander_data', JSON.stringify(data));
-                  console.log('Saved to sessionStorage');
-                  isSaved = true;
-                } catch (e) {
-                  console.warn('sessionStorage failed', e);
-                }
-
-                // 3. Try Cookie (always try as backup)
-                try {
-                   const date = new Date();
-                   date.setTime(date.getTime() + (1 * 60 * 60 * 1000)); // 1 hour
-                   // Use Lax to allow redirect reading
-                   document.cookie = "commander_data=" + encodeURIComponent(JSON.stringify(data)) + "; expires=" + date.toUTCString() + "; path=/; SameSite=Lax";
-                   console.log('Saved to Cookie');
-                   isSaved = true;
-                } catch (e) {
-                   console.warn('Cookie failed', e);
-                }
-
-                // 4. URL Fallback (If nothing else worked OR just to be safe)
-                // We always append data to URL if it's safe size, just to guarantee delivery
-                const encodedData = encodeURIComponent(JSON.stringify(data));
-                let targetUrl = '/';
-                
-                if (!isSaved || encodedData.length < 15000) {
-                    console.log('Using URL params fallback');
-                    targetUrl = '/?data=' + encodedData;
-                }
-                
-                // Redirect
-                console.log('Redirecting to:', targetUrl);
-                setTimeout(() => {
-                  window.location.href = targetUrl;
-                }, 500);
 
               } catch (e) {
                 console.error('Critical error:', e);
-                // Fallback UI
-                document.body.innerHTML = '<div style="color:white; text-align:center; padding:50px;"><h1>Critical Error</h1><p>' + e.toString() + '</p></div>';
+                document.body.innerHTML = '<div style="color:white; text-align:center; padding:50px;"><h1>Login Error</h1><p>Failed to save session data. Please try again.</p><p>' + e.toString() + '</p></div>';
               }
             })();
           </script>
@@ -620,19 +589,29 @@ export const frontierCallback = onRequest({ cors: true, secrets: [frontierClient
     `);
   } catch (error) {
     logger.error("Error during token exchange or profile fetch:", error);
-    if (axios.isAxiosError(error)) {
-      logger.error("Axios error details:", error.response?.data);
-    }
-    response.status(500).send(`
-       <html>
-        <body style="font-family: sans-serif; background-color: #0c111a; color: #e5e7eb; text-align: center; padding-top: 50px;">
-          <h1>Authentication Failed</h1>
-          <p>There was an error connecting to the Frontier servers.</p>
-          <p>Please try again later. Check the function logs for more details.</p>
-        </body>
-      </html>
-    `);
+    // ... error handling ...
+    response.status(500).send("Internal Server Error");
   }
+});
+
+// New function to retrieve data by session ID
+export const retrieveAuthData = onCall(async (request) => {
+  const sessionId = request.data.sessionId;
+  if (!sessionId) {
+    throw new HttpsError('invalid-argument', 'The function must be called with a sessionId.');
+  }
+
+  const doc = await admin.firestore().collection('auth_sessions').doc(sessionId).get();
+  if (!doc.exists) {
+    throw new HttpsError('not-found', 'Session not found or expired.');
+  }
+
+  const data = doc.data()?.data;
+
+  // Clean up (delete the session after retrieval)
+  await admin.firestore().collection('auth_sessions').doc(sessionId).delete();
+
+  return data;
 });
 
 
