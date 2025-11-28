@@ -41,7 +41,32 @@ const App: React.FC = () => {
       }
     }
 
-    // 3. If still not found, check URL params (last resort)
+    // 3. If still not found, check Cookies (fallback for tracking prevention)
+    if (!savedData) {
+      try {
+        const name = "commander_data=";
+        const decodedCookie = decodeURIComponent(document.cookie);
+        const ca = decodedCookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+          let c = ca[i];
+          while (c.charAt(0) === ' ') {
+            c = c.substring(1);
+          }
+          if (c.indexOf(name) === 0) {
+            savedData = c.substring(name.length, c.length);
+            console.log('Recovered data from Cookie');
+            // Save to storage for better persistence
+            storage.setItem('commander_data', savedData);
+            // Clear cookie to avoid stale data
+            document.cookie = "commander_data=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to read cookie', e);
+      }
+    }
+
+    // 4. If still not found, check URL params (last resort)
     if (!savedData) {
       const urlParams = new URLSearchParams(window.location.search);
       const dataParam = urlParams.get('data');

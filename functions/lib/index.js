@@ -74,8 +74,7 @@ const getFrontierClientSecret = () => {
 // Questa costante non deve essere modificata se il progetto è fisso.
 const PROJECT_ID = "gen-lang-client-0452273955";
 // This is the URL that Frontier will redirect to after the user logs in.
-// It must point to the frontierCallback Cloud Function
-const REDIRECT_URI = `https://us-central1-${PROJECT_ID}.cloudfunctions.net/frontierCallback`;
+const REDIRECT_URI = `https://${PROJECT_ID}.web.app/frontiercallback`;
 // Step 1: Redirect user to Frontier's login page
 exports.frontierAuth = (0, https_2.onRequest)({ cors: true, secrets: [frontierClientId, frontierClientSecret] }, (request, response) => {
     const clientId = getFrontierClientId();
@@ -552,24 +551,47 @@ exports.frontierCallback = (0, https_2.onRequest)({ cors: true, secrets: [fronti
                 // Try to save to localStorage
                 try {
                   localStorage.setItem('commander_data', JSON.stringify(data));
-                  console.log('Commander data saved successfully');
+                  console.log('Commander data saved to localStorage');
                 } catch (storageError) {
-                  console.warn('localStorage blocked, using sessionStorage fallback', storageError);
+                  console.warn('localStorage blocked', storageError);
+                  
+                  // Try sessionStorage
                   try {
                     sessionStorage.setItem('commander_data', JSON.stringify(data));
+                    console.log('Commander data saved to sessionStorage');
                   } catch (sessionError) {
-                    console.error('Both localStorage and sessionStorage blocked', sessionError);
-                    // Store in memory via URL params as last resort
-                    const encodedData = encodeURIComponent(JSON.stringify(data));
-                    window.location.href = '/?data=' + encodedData;
-                    return;
+                    console.warn('sessionStorage blocked', sessionError);
+                    
+                    // Try Cookie (First-party, often works when storage is blocked)
+                    try {
+                       // Set cookie for 1 hour
+                       const date = new Date();
+                       date.setTime(date.getTime() + (1 * 60 * 60 * 1000));
+                       const expires = "; expires=" + date.toUTCString();
+                       // We must encode the data to be cookie-safe
+                       document.cookie = "commander_data=" + encodeURIComponent(JSON.stringify(data)) + expires + "; path=/; SameSite=Lax";
+                       console.log('Commander data saved to Cookie');
+                    } catch (cookieError) {
+                       console.error('Cookie blocked', cookieError);
+                       
+                       // Last resort: URL Params
+                       const encodedData = encodeURIComponent(JSON.stringify(data));
+                       // Check if data is too long for URL (approx 2000 chars safety limit for some browsers)
+                       if (encodedData.length < 2000) {
+                           window.location.href = '/?data=' + encodedData;
+                           return;
+                       } else {
+                           console.error('Data too large for URL params');
+                           document.body.innerHTML += '<p style="color:red">Data too large to transfer via URL. Please enable cookies/storage.</p>';
+                       }
+                    }
                   }
                 }
                 
                 // Redirect to dashboard
                 setTimeout(() => {
                   window.location.href = '/';
-                }, 1500);
+                }, 1000);
               } catch (e) {
                 console.error('Critical error:', e);
                 document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: sans-serif; background-color: #0c111a; color: #e5e7eb; height: 100vh;">' +
