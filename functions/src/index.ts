@@ -559,64 +559,59 @@ export const frontierCallback = onRequest({ cors: true, secrets: [frontierClient
               try {
                 const data = ${JSON.stringify(gameData)};
                 
-                // Try to save to localStorage
+                // FLAG: Data saved status
+                let isSaved = false;
+
+                // 1. Try localStorage
                 try {
                   localStorage.setItem('commander_data', JSON.stringify(data));
-                  console.log('Commander data saved to localStorage');
-                } catch (storageError) {
-                  console.warn('localStorage blocked', storageError);
-                  
-                  // Try sessionStorage
-                  try {
-                    sessionStorage.setItem('commander_data', JSON.stringify(data));
-                    console.log('Commander data saved to sessionStorage');
-                  } catch (sessionError) {
-                    console.warn('sessionStorage blocked', sessionError);
-                    
-                    // Try Cookie (First-party, often works when storage is blocked)
-                    try {
-                       // Set cookie for 1 hour
-                       const date = new Date();
-                       date.setTime(date.getTime() + (1 * 60 * 60 * 1000));
-                       const expires = "; expires=" + date.toUTCString();
-                       // We must encode the data to be cookie-safe
-                       document.cookie = "commander_data=" + encodeURIComponent(JSON.stringify(data)) + expires + "; path=/; SameSite=Lax";
-                       console.log('Commander data saved to Cookie');
-                    } catch (cookieError) {
-                       console.error('Cookie blocked', cookieError);
-                       
-                       // Last resort: URL Params
-                       const encodedData = encodeURIComponent(JSON.stringify(data));
-                       // Check if data is too long for URL (approx 2000 chars safety limit for some browsers)
-                       if (encodedData.length < 2000) {
-                           window.location.href = '/?data=' + encodedData;
-                           return;
-                       } else {
-                           console.error('Data too large for URL params');
-                           document.body.innerHTML += '<p style="color:red">Data too large to transfer via URL. Please enable cookies/storage.</p>';
-                       }
-                    }
-                  }
+                  console.log('Saved to localStorage');
+                  isSaved = true;
+                } catch (e) {
+                  console.warn('localStorage failed', e);
                 }
                 
-                // Redirect to dashboard
+                // 2. Try sessionStorage (always try as backup)
+                try {
+                  sessionStorage.setItem('commander_data', JSON.stringify(data));
+                  console.log('Saved to sessionStorage');
+                  isSaved = true;
+                } catch (e) {
+                  console.warn('sessionStorage failed', e);
+                }
+
+                // 3. Try Cookie (always try as backup)
+                try {
+                   const date = new Date();
+                   date.setTime(date.getTime() + (1 * 60 * 60 * 1000)); // 1 hour
+                   // Use Lax to allow redirect reading
+                   document.cookie = "commander_data=" + encodeURIComponent(JSON.stringify(data)) + "; expires=" + date.toUTCString() + "; path=/; SameSite=Lax";
+                   console.log('Saved to Cookie');
+                   isSaved = true;
+                } catch (e) {
+                   console.warn('Cookie failed', e);
+                }
+
+                // 4. URL Fallback (If nothing else worked OR just to be safe)
+                // We always append data to URL if it's safe size, just to guarantee delivery
+                const encodedData = encodeURIComponent(JSON.stringify(data));
+                let targetUrl = '/';
+                
+                if (!isSaved || encodedData.length < 15000) {
+                    console.log('Using URL params fallback');
+                    targetUrl = '/?data=' + encodedData;
+                }
+                
+                // Redirect
+                console.log('Redirecting to:', targetUrl);
                 setTimeout(() => {
-                  window.location.href = '/';
-                }, 1000);
+                  window.location.href = targetUrl;
+                }, 500);
+
               } catch (e) {
                 console.error('Critical error:', e);
-                document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: sans-serif; background-color: #0c111a; color: #e5e7eb; height: 100vh;">' +
-                  '<h1 style="color: #f97316;">Storage Error</h1>' +
-                  '<p>Your browser\\'s tracking prevention is blocking data storage.</p>' +
-                  '<p>Please disable tracking prevention for this site or use a different browser.</p>' +
-                  '<p style="margin-top: 30px; font-size: 14px; color: #9ca3af;">' +
-                    'Safari users: Settings → Privacy → Disable "Prevent Cross-Site Tracking"<br>' +
-                    'Firefox users: Settings → Privacy → Standard protection' +
-                  '</p>' +
-                  '<button onclick="window.location.href=\\'/\\'" style="margin-top: 30px; padding: 12px 24px; background: #f97316; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">' +
-                    'Try Again' +
-                  '</button>' +
-                '</div>';
+                // Fallback UI
+                document.body.innerHTML = '<div style="color:white; text-align:center; padding:50px;"><h1>Critical Error</h1><p>' + e.toString() + '</p></div>';
               }
             })();
           </script>

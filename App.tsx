@@ -134,6 +134,10 @@ const App: React.FC = () => {
     return (
       <LanguageProvider>
         <LoginScreen onLogin={handleLogin} loading={loading} error={error} />
+        {/* Debug Info - Remove in production */}
+        <div style={{ position: 'fixed', bottom: 0, left: 0, padding: '10px', fontSize: '10px', color: '#666', background: 'rgba(0,0,0,0.8)', maxWidth: '100%', wordBreak: 'break-all' }}>
+          Debug: No session found. Storage checked. URL params: {window.location.search}
+        </div>
       </LanguageProvider>
     );
   }
