@@ -48,8 +48,7 @@ const getFrontierClientSecret = (): string => {
 const PROJECT_ID = "gen-lang-client-0452273955";
 
 // This is the URL that Frontier will redirect to after the user logs in.
-// It must point to the frontierCallback Cloud Function
-const REDIRECT_URI = `https://us-central1-${PROJECT_ID}.cloudfunctions.net/frontierCallback`;
+const REDIRECT_URI = `https://${PROJECT_ID}.web.app/frontiercallback`;
 
 // Step 1: Redirect user to Frontier's login page
 export const frontierAuth = onRequest({ cors: true, secrets: [frontierClientId, frontierClientSecret] }, (request, response) => {
